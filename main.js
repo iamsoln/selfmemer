@@ -89,7 +89,11 @@ async function configReloadLoop() {
 }
 
 // ── Helpers ────────────────────────────────────────────────
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms, extra = 500) {
+    // Adds some extra cd.
+    const totalWait = ms + Math.floor(Math.random() * extra);
+    return new Promise(r => setTimeout(r, totalWait));
+}
 
 class Mutex {
     constructor() { this._locked = false; this._queue = []; this.lockFilePath = null; }
