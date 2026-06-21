@@ -18,7 +18,7 @@ NUMERIC_FIELDS = [
 ]
 RISK_FIELDS  = ["search_risk", "crime_risk"]
 VALID_RISK   = {"low", "medium", "high", "custom"}
-COMMAND_KEYS = ["hunt", "dig", "search", "beg", "crime", "hl", "pm", "adv", "fish"]
+COMMAND_KEYS = ["hunt", "dig", "search", "beg", "crime", "hl", "pm", "adv", "fish", "daily", "work", "deposit", "trivia", "stream", "pet"]
 
 VALID_ADV_TYPES = [
     "Pepe Goes to Space",
@@ -40,6 +40,8 @@ DEFAULT_ACCOUNT = {
     "commands_enabled": {
         "hunt": True, "dig": True, "search": True,
         "beg": True, "crime": True, "hl": True, "pm": True, "adv": False,
+                "fish": False, "daily": False, "work": False, "deposit": False,
+        "trivia": False, "stream": False, "pet": False,
     },
     # ── Stealth / anti-detection ──────────────────────────────
     "limit_flags":        False,

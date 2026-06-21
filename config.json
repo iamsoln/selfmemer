@@ -34,7 +34,8 @@
                 "hl": false,
                 "pm": false,
                 "adv": false,
-                "fish": false
+                "fish": false,
+                   "trivia": false
             },
             "market_sniper_enabled": false,
             "market_sniper_cooldown": 30,

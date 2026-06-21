@@ -68,12 +68,12 @@ const _cfg = {
     trivia_cooldown:  config.trivia_cooldown  ?? 10,
     stream_cooldown:  config.stream_cooldown  ?? 660,
     pet_cooldown:     config.pet_cooldown     ?? 1800,
-    commands_enabled:  config.commands_enabled  ?? {
+        commands_enabled:  Object.assign({
         hunt: true, dig: true, search: true,
         beg: true, crime: true, hl: true, pm: true, adv: false,
         fish: false, daily: false, work: false, deposit: false,
         trivia: false, stream: false, pet: false,
-    },
+                }, config.commands_enabled || {}),
 };
 
 function log(level, msg) {
@@ -2536,15 +2536,42 @@ client.on('ready', async () => {
         }
     }
 
-    // ── Trivia loop (with persistent answer cache) ─────────────────────
-    const TRIVIA_CACHE_PATH = path.join(__dirname, `trivia_cache_${ACCOUNT_ID}.json`);
-    let _triviaCache = {};
-    try { _triviaCache = JSON.parse(fs.readFileSync(TRIVIA_CACHE_PATH, 'utf8')); } catch {}
-    function saveTriviaCache() {
-        try { fs.writeFileSync(TRIVIA_CACHE_PATH, JSON.stringify(_triviaCache, null, 2)); } catch {}
+  // ── Trivia loop (answer from trivia.json) ──────────────────────────
+    const TRIVIA_DB = (() => {
+        const map = new Map();
+        try {
+            const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'trivia.json'), 'utf8'));
+            for (const [catB64, entries] of Object.entries(raw)) {
+                const category = Buffer.from(catB64, 'base64').toString().toLowerCase().trim();
+                for (const e of entries) {
+                    const q = Buffer.from(e.question, 'base64').toString().toLowerCase().trim();
+                    const a = Buffer.from(e.answer, 'base64').toString().trim();
+                    const key = `${category}::${q}`;
+                    if (!map.has(key)) map.set(key, a);
+                }
+            }
+            log('info', `[TRIVIA] Loaded ${map.size} answers from trivia.json`);
+        } catch (err) {
+            log('warn', `[TRIVIA] Failed to load trivia.json: ${err.message}`);
+        }
+        return map;
+    })();
+
+    function findTriviaAnswer(question, category, buttons) {
+        const q = question.toLowerCase().trim();
+        const c = category.toLowerCase().trim();
+        const answer = TRIVIA_DB.get(`${c}::${q}`);
+        if (!answer) return null;
+        const aLower = answer.toLowerCase().trim();
+        return buttons.find(b => {
+            const lbl = (b.label || '').toLowerCase().trim();
+            if (lbl === aLower) return true;
+            const stripped = lbl.replace(/^[a-z]\s*\.\s*/, '').trim();
+            return stripped === aLower;
+        }) || null;
     }
 
-    async function triviaLoop() {
+      async function triviaLoop() {
         await sleep(34000);
         while (true) {
             if (_botPaused) { await sleep(5000); continue; }
@@ -2559,44 +2586,21 @@ client.on('ready', async () => {
                     const fields   = embed.fields || [];
                     const question = desc.match(/\*\*(.*?)\*\*/)?.[1] || '';
                     const category = fields[1]?.value || fields[0]?.value || '';
-                    const cacheKey = `${category}::${question}`;
                     const btns     = getButtons(res);
                     if (!btns.length) { log('warn', '[TRIVIA] No buttons'); return; }
 
-                    const known = _triviaCache[cacheKey];
-                    let pick    = null;
-
-                    if (known) {
-                        pick = btns.find(b => b.label === known);
-                        // Simulate reading even for known answers — humans still scan the options
-                        await sleep(1500 + Math.random() * 2500);
-                        if (pick) log('info', `[TRIVIA] Known: '${pick.label}' (${category})`);
-                    }
+                    const pick = findTriviaAnswer(question, category, btns);
 
                     if (!pick) {
-                        // Unknown — simulate thinking (longer, more variable delay)
-                        await sleep(3500 + Math.random() * 4500);
-                        pick = btns[Math.floor(Math.random() * btns.length)];
-                        log('info', `[TRIVIA] Guessing '${pick.label}' (${category || 'unknown'})`);
+                        log('warn', `[TRIVIA] Unknown question — skipping: "${question}" (${category})`);
+                        return;
                     }
+
+                    await sleep(1500 + Math.random() * 2500);
+                    log('info', `[TRIVIA] Answering: '${pick.label}' (${category})`);
 
                     const triviaOk = await clickButton(res, pick.label);
                     if (!triviaOk) { log('warn', '[TRIVIA] Click failed after retry'); return; }
-
-                    // Wait for Discord to highlight the correct answer, then learn it
-                    if (question) {
-                        await sleep(1000 + Math.random() * 500);
-                        try {
-                            const updated = await channel.messages.fetch(res.id);
-                            const correct = getButtons(updated).find(b => b.style === 3 || b.style === 'SUCCESS');
-                            if (correct && _triviaCache[cacheKey] !== correct.label) {
-                                _triviaCache[cacheKey] = correct.label;
-                                saveTriviaCache();
-                                const wasRight = correct.label === pick.label;
-                                log('info', `[TRIVIA] ${wasRight ? '✓' : '✗'} Answer: '${correct.label}' — ${wasRight ? 'correct' : 'was wrong, cached for next time'}`);
-                            }
-                        } catch {}
-                    }
                 });
             }
             await sleep(cd('trivia_cooldown'));
